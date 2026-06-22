@@ -28,7 +28,6 @@ app.use(helmet.hidePoweredBy());
 app.use(helmet.xssFilter());
 app.use(cors());
 
-// Memperbesar batas JSON untuk kebutuhan payload besar
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -43,7 +42,6 @@ async function connectAndSeed() {
   if (isDbConnected) return;
   try {
     await sequelize.authenticate();
-    // Catatan: sequelize.sync({ alter: true }) dinonaktifkan untuk mencegah overload koneksi di serverless
     
     const adminExist = await User.findOne({ where: { username: 'admin' } });
     if (!adminExist) {
@@ -60,11 +58,10 @@ async function connectAndSeed() {
     }
     isDbConnected = true;
   } catch (err) {
-    console.error('Gagal koneksi database:', err);
+    console.error('❌ GAGAL KONEKSI UTAMA DATABASE:', err);
   }
 }
 
-// Jalankan pemeriksaan koneksi setiap kali ada request masuk
 app.use(async (req, res, next) => {
   await connectAndSeed();
   next();
@@ -90,9 +87,7 @@ const verifyToken = (req, res, next) => {
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
-  message: {
-    message: "Terlalu banyak upaya login dari komputer ini. Silakan coba lagi setelah 15 menit."
-  },
+  message: { message: "Terlalu banyak upaya login. Coba lagi setelah 15 menit." },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -101,7 +96,6 @@ const loginLimiter = rateLimit({
 // 5. API ENDPOINTS & ROUTING
 // ==========================================
 
-// Terapkan rate-limiter khusus untuk Login API
 app.use('/api/auth/login', loginLimiter);
 
 // API AUTENTIKASI (LOGIN)
@@ -110,14 +104,10 @@ app.post('/api/auth/login', async (req, res) => {
     const { identifier, username, password } = req.body;
     const loginKey = identifier || username;
 
-    if (!loginKey) {
-      return res.status(400).json({ message: "Username, NISN, atau NIP wajib diisi." });
-    }
+    if (!loginKey) return res.status(400).json({ message: "Identitas login wajib diisi." });
 
     const user = await User.findOne({
-      include: [
-        { model: Admin }, { model: Guru }, { model: Siswa }, { model: Kepsek }
-      ],
+      include: [{ model: Admin }, { model: Guru }, { model: Siswa }, { model: Kepsek }],
       where: {
         password: password,
         [Op.or]: [
@@ -137,13 +127,7 @@ app.post('/api/auth/login', async (req, res) => {
       if (userData.role === 'siswa' && userData.Siswa) profil = userData.Siswa;
       if (userData.role === 'kepsek' && userData.Kepsek) profil = userData.Kepsek;
 
-      const finalUser = {
-        ...profil,
-        id: userData.id,
-        username: userData.username,
-        role: userData.role,
-      };
-
+      const finalUser = { ...profil, id: userData.id, username: userData.username, role: userData.role };
       const token = jwt.sign({ id: finalUser.id, role: finalUser.role }, SECRET_KEY, { expiresIn: '8h' });
       res.json({ message: "Login Berhasil", token, user: finalUser });
     } else {
@@ -175,13 +159,10 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
   try {
     let userId = req.user.id;
     const userRole = req.user.role;
-    const {
-      name, username, password, no_wa, jenis_kelamin, tanggal_lahir, foto, alamat, spesialisasi, nuptk, nip, pendidikan
-    } = req.body;
+    const { name, username, password, no_wa, jenis_kelamin, tanggal_lahir, foto, alamat, spesialisasi, nuptk, nip, pendidikan } = req.body;
 
     if ((userRole === 'kepsek' || userRole === 'guru') && nip) {
-      const nipRegex = /^[0-9]{18}$/;
-      if (!nipRegex.test(String(nip).trim())) {
+      if (!/^[0-9]{18}$/.test(String(nip).trim())) {
         await t.rollback();
         return res.status(400).json({ message: "Format NIP salah! Wajib berisi tepat 18 digit angka." });
       }
@@ -189,26 +170,14 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
 
     let currentUser = await User.findByPk(userId, { transaction: t });
     if (!currentUser) {
-      if (userRole === 'admin') {
-        const dataAdmin = await Admin.findByPk(userId, { transaction: t });
-        if (dataAdmin) userId = dataAdmin.userId;
-      } else if (userRole === 'siswa') {
-        const dataSiswa = await Siswa.findByPk(userId, { transaction: t });
-        if (dataSiswa) userId = dataSiswa.userId;
-      } else if (userRole === 'guru') {
-        const dataGuru = await Guru.findByPk(userId, { transaction: t });
-        if (dataGuru) userId = dataGuru.userId;
-      } else if (userRole === 'kepsek') {
-        const dataKepsek = await Kepsek.findOne({ where: { id: userId }, transaction: t }) || await Kepsek.findByPk(userId, { transaction: t });
-        if (dataKepsek) userId = dataKepsek.userId;
-      }
+      if (userRole === 'admin') { const d = await Admin.findByPk(userId, { transaction: t }); if (d) userId = d.userId; }
+      else if (userRole === 'siswa') { const d = await Siswa.findByPk(userId, { transaction: t }); if (d) userId = d.userId; }
+      else if (userRole === 'guru') { const d = await Guru.findByPk(userId, { transaction: t }); if (d) userId = d.userId; }
+      else if (userRole === 'kepsek') { const d = await Kepsek.findOne({ where: { id: userId }, transaction: t }) || await Kepsek.findByPk(userId, { transaction: t }); if (d) userId = d.userId; }
       currentUser = await User.findByPk(userId, { transaction: t });
     }
 
-    if (!currentUser) {
-      await t.rollback();
-      return res.status(404).json({ message: "User profil tidak ditemukan." });
-    }
+    if (!currentUser) { await t.rollback(); return res.status(404).json({ message: "User tidak ditemukan." }); }
 
     const updateUserData = {};
     if (username && username.trim() !== currentUser.username) updateUserData.username = username.trim();
@@ -221,46 +190,33 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
     }
 
     if (userRole === 'admin') {
-      let profilAdmin = await Admin.findOne({ where: { userId: userId }, transaction: t });
-      if (profilAdmin) {
-        profilAdmin.name = name.trim(); profilAdmin.no_wa = no_wa; profilAdmin.jenis_kelamin = jenis_kelamin;
-        profilAdmin.tanggal_lahir = tanggal_lahir; profilAdmin.foto = foto;
-        await profilAdmin.save({ transaction: t });
-      } else {
-        await Admin.create({ userId: userId, name: name.trim(), no_wa: no_wa || null, jenis_kelamin: jenis_kelamin || 'Laki-laki', tanggal_lahir: tanggal_lahir || null, foto: foto || null }, { transaction: t });
-      }
+      let p = await Admin.findOne({ where: { userId: userId }, transaction: t });
+      if (p) { p.name = name.trim(); p.no_wa = no_wa; p.jenis_kelamin = jenis_kelamin; p.tanggal_lahir = tanggal_lahir; p.foto = foto; await p.save({ transaction: t }); }
+      else { await Admin.create({ userId: userId, name: name.trim(), no_wa: no_wa || null, jenis_kelamin: jenis_kelamin || 'Laki-laki', tanggal_lahir: tanggal_lahir || null, foto: foto || null }, { transaction: t }); }
     } else if (userRole === 'guru') {
-      let profilGuru = await Guru.findOne({ where: { userId: userId }, transaction: t });
-      if (profilGuru) {
-        if (name) profilGuru.name = name.trim(); if (jenis_kelamin) profilGuru.jenis_kelamin = jenis_kelamin;
-        if (no_wa !== undefined) profilGuru.no_wa = no_wa; if (tanggal_lahir !== undefined) profilGuru.tanggal_lahir = tanggal_lahir;
-        if (foto !== undefined) profilGuru.foto = foto; if (alamat !== undefined) profilGuru.alamat = alamat;
-        if (spesialisasi !== undefined) profilGuru.spesialisasi = spesialisasi; if (nuptk !== undefined) profilGuru.nuptk = nuptk;
-        if (nip !== undefined) profilGuru.nip = String(nip).trim(); if (pendidikan !== undefined) profilGuru.pendidikan = pendidikan;
-        await profilGuru.save({ transaction: t });
-      } else {
-        await Guru.create({ userId: userId, name: name.trim(), no_wa: no_wa || null, jenis_kelamin: jenis_kelamin, tanggal_lahir: tanggal_lahir || null, alamat: alamat || null, spesialisasi: spesialisasi || null, nuptk: nuptk || null, nip: nip ? String(nip).trim() : null, pendidikan: pendidikan || 'S1 Pendidikan', foto: foto || null }, { transaction: t });
-      }
+      let p = await Guru.findOne({ where: { userId: userId }, transaction: t });
+      if (p) {
+        if (name) p.name = name.trim(); if (jenis_kelamin) p.jenis_kelamin = jenis_kelamin;
+        if (no_wa !== undefined) p.no_wa = no_wa; if (tanggal_lahir !== undefined) p.tanggal_lahir = tanggal_lahir;
+        if (foto !== undefined) p.foto = foto; if (alamat !== undefined) p.alamat = alamat;
+        if (spesialisasi !== undefined) p.spesialisasi = spesialisasi; if (nuptk !== undefined) p.nuptk = nuptk;
+        if (nip !== undefined) p.nip = String(nip).trim(); if (pendidikan !== undefined) p.pendidikan = pendidikan;
+        await p.save({ transaction: t });
+      } else { await Guru.create({ userId: userId, name: name.trim(), no_wa: no_wa || null, jenis_kelamin: jenis_kelamin, tanggal_lahir: tanggal_lahir || null, alamat: alamat || null, spesialisasi: spesialisasi || null, nuptk: nuptk || null, nip: nip ? String(nip).trim() : null, pendidikan: pendidikan || 'S1 Pendidikan', foto: foto || null }, { transaction: t }); }
     } else if (userRole === 'siswa') {
-      let profilSiswa = await Siswa.findOne({ where: { userId: userId }, transaction: t });
-      if (profilSiswa) {
-        if (name) profilSiswa.name = name.trim(); if (jenis_kelamin) profilSiswa.jenis_kelamin = jenis_kelamin;
-        if (no_wa !== undefined) profilSiswa.no_wa = no_wa; if (alamat !== undefined) profilSiswa.alamat = alamat;
-        if (foto !== undefined) profilSiswa.foto = foto;
-        await profilSiswa.save({ transaction: t });
-      } else {
-        await Siswa.create({ userId: userId, name: name.trim(), jenis_kelamin: jenis_kelamin || 'Laki-laki', no_wa: no_wa || null, alamat: alamat || null, foto: foto || null }, { transaction: t });
-      }
+      let p = await Siswa.findOne({ where: { userId: userId }, transaction: t });
+      if (p) {
+        if (name) p.name = name.trim(); if (jenis_kelamin) p.jenis_kelamin = jenis_kelamin;
+        if (no_wa !== undefined) p.no_wa = no_wa; if (alamat !== undefined) p.alamat = alamat;
+        if (foto !== undefined) p.foto = foto; await p.save({ transaction: t });
+      } else { await Siswa.create({ userId: userId, name: name.trim(), jenis_kelamin: jenis_kelamin || 'Laki-laki', no_wa: no_wa || null, alamat: alamat || null, foto: foto || null }, { transaction: t }); }
     } else if (userRole === 'kepsek') {
-      let profilKepsek = await Kepsek.findOne({ where: { userId: userId }, transaction: t });
-      if (profilKepsek) {
-        if (name) profilKepsek.name = name.trim(); if (no_wa !== undefined) profilKepsek.no_wa = no_wa;
-        if (nip !== undefined) profilKepsek.nip = String(nip).trim(); if (foto !== undefined) profilKepsek.foto = foto;
-        if (alamat !== undefined) profilKepsek.alamat = alamat;
-        await profilKepsek.save({ transaction: t });
-      } else {
-        await Kepsek.create({ userId: userId, name: name.trim(), nip: nip ? String(nip).trim() : null, no_wa: no_wa || null, foto: foto || null, alamat: alamat || null }, { transaction: t });
-      }
+      let p = await Kepsek.findOne({ where: { userId: userId }, transaction: t });
+      if (p) {
+        if (name) p.name = name.trim(); if (no_wa !== undefined) p.no_wa = no_wa;
+        if (nip !== undefined) p.nip = String(nip).trim(); if (foto !== undefined) p.foto = foto;
+        if (alamat !== undefined) p.alamat = alamat; await p.save({ transaction: t });
+      } else { await Kepsek.create({ userId: userId, name: name.trim(), nip: nip ? String(nip).trim() : null, no_wa: no_wa || null, foto: foto || null, alamat: alamat || null }, { transaction: t }); }
     }
 
     await t.commit();
@@ -268,7 +224,7 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
     return res.json({ message: "Profil Anda berhasil diperbarui!", user: updatedKepsek ? { ...updatedKepsek.toJSON(), username: currentUser.username, role: userRole } : null });
   } catch (error) {
     await t.rollback();
-    return res.status(500).json({ message: "Terjadi kesalahan sistem pada server.", error: error.message });
+    return res.status(500).json({ message: "Terjadi kesalahan sistem.", error: error.message });
   }
 });
 
@@ -286,7 +242,7 @@ app.get('/api/users', verifyToken, async (req, res) => {
       if (userData.role === 'admin') profilRaw = userData.Admin || {};
       if (userData.role === 'guru') profilRaw = userData.Guru || {};
       if (userData.role === 'kepsek') profilRaw = userData.Kepsek || {};
-      if (userData.role === 'siswa' && userData.Siswa) profilRaw = userData.Siswa || {};
+      if (userData.role === 'siswa') profilRaw = userData.Siswa || {};
       const profilBersih = { ...profilRaw };
       const idProfilAsli = profilBersih.id;
       delete profilBersih.id;
@@ -308,6 +264,7 @@ app.post('/api/users', verifyToken, [
     const { name, username, password, role, nisn, nip, id_kelas, mata_pelajaran, jenis_kelamin, no_wa } = req.body;
     const finalUsername = (role === 'siswa') ? nisn : (username || nip);
     if (!finalUsername || finalUsername.trim() === "") { await t.rollback(); return res.status(400).json({ message: "Username, NIP, atau NISN wajib diisi." }); }
+    
     const newUser = await User.create({ username: finalUsername.trim(), password, role }, { transaction: t });
 
     if (role === 'admin') { await Admin.create({ userId: newUser.id, name }, { transaction: t }); }
@@ -316,28 +273,52 @@ app.post('/api/users', verifyToken, [
     else if (role === 'siswa') {
       await Siswa.create({
         userId: newUser.id, name: name, nisn, jenis_kelamin: jenis_kelamin || "Laki-laki",
-        status_siswa: 'Aktif', // ✨ Perbaikan: Tambah field wajib status_siswa
+        status_siswa: 'Aktif',
         id_kelas: (!id_kelas || id_kelas === "") ? null : id_kelas
       }, { transaction: t });
     }
     await t.commit(); return res.status(201).json({ message: "Pengguna berhasil didaftarkan!" });
   } catch (error) {
     await t.rollback();
-    if (error.name === 'SequelizeUniqueConstraintError') return res.status(400).json({ message: "Data Unik (Username/NISN/NIP) sudah terdaftar." });
-    return res.status(500).json({ message: "Gagal menyimpan data ke database.", error: error.message });
+    if (error.name === 'SequelizeUniqueConstraintError') return res.status(400).json({ message: "Data Unik sudah terdaftar." });
+    return res.status(500).json({ message: "Gagal menyimpan data.", error: error.message });
   }
 });
 
+// EDIT DATA USER (ADMIN VIEW - KELOLA SISWA KOKOH)
 app.put('/api/users/:id', verifyToken, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ message: "Akses Ditolak!" });
   const t = await sequelize.transaction();
   try {
-    const userId = req.params.id; const { name, nisn, jenis_kelamin, id_kelas, status_siswa, password } = req.body;
-    const userTarget = await User.findByPk(userId); if (!userTarget) throw new Error("User tidak ditemukan.");
-    if (password) await User.update({ password }, { where: { id: userId }, transaction: t });
-    if (userTarget.role === 'siswa') { await Siswa.update({ name, nisn, jenis_kelamin, id_kelas: (!id_kelas || id_kelas === "") ? null : id_kelas, status_siswa }, { where: { userId: userId }, transaction: t }); }
-    await t.commit(); res.json({ message: "Data berhasil diperbarui!" });
-  } catch (error) { await t.rollback(); res.status(500).json({ error: error.message }); }
+    const userId = req.params.id;
+    const { name, nama, name_siswa, nisn, jenis_kelamin, id_kelas, status_siswa, password } = req.body;
+
+    const userTarget = await User.findByPk(userId);
+    if (!userTarget) throw new Error("User tidak ditemukan.");
+
+    if (password && password.trim() !== "") {
+      await User.update({ password }, { where: { id: userId }, transaction: t });
+    }
+
+    if (userTarget.role === 'siswa') {
+      await Siswa.update(
+        { 
+          name: name || nama || name_siswa, 
+          nisn, 
+          jenis_kelamin, 
+          id_kelas: (!id_kelas || id_kelas === "") ? null : id_kelas, 
+          status_siswa: status_siswa || 'Aktif' 
+        },
+        { where: { userId: userId }, transaction: t }
+      );
+    }
+    await t.commit(); 
+    res.json({ message: "Data berhasil diperbarui!" });
+  } catch (error) { 
+    await t.rollback(); 
+    console.error("❌ GAGAL MEMPROSES EDIT SISWA:", error);
+    res.status(500).json({ error: error.message }); 
+  }
 });
 
 app.delete('/api/users/:id', verifyToken, async (req, res) => {
@@ -345,7 +326,7 @@ app.delete('/api/users/:id', verifyToken, async (req, res) => {
     const deleted = await User.destroy({ where: { id: req.params.id } });
     if (!deleted) return res.status(404).json({ message: "Data tidak ditemukan." });
     res.status(200).json({ message: "Data berhasil dihapus selamanya." });
-  } catch (error) { res.status(500).json({ message: "Gagal menghapus data dari database.", detail: error.message }); }
+  } catch (error) { res.status(500).json({ message: "Gagal menghapus data.", detail: error.message }); }
 });
 
 app.put('/api/admin/guru/:id', verifyToken, async (req, res) => {
@@ -359,7 +340,7 @@ app.put('/api/admin/guru/:id', verifyToken, async (req, res) => {
   } catch (error) { await t.rollback(); res.status(500).json({ error: error.message }); }
 });
 
-// REKAM AKADEMIK: KHS AKTIF & RIWAYAT
+// REKAM AKADEMIK
 app.get('/api/nilai/me', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'siswa') return res.status(403).json({ message: "Akses Ditolak!" });
@@ -385,7 +366,7 @@ app.get('/api/riwayatsiswa', verifyToken, async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// API KELAS & PENUGASAN
+// API KELAS & PENUGASAN MENGALIR KOKOH
 app.get('/api/kelas', verifyToken, async (req, res) => {
   try {
     const kelasData = await Kelas.findAll({ include: [{ model: Guru, as: 'WaliKelas', attributes: ['name', 'nip'] }, { model: Siswa, as: 'DaftarSiswa' }, { model: PenugasanGuru, as: 'Penugasan', include: [{ model: Guru, as: 'Guru', attributes: ['name'] }, { model: MataPelajaran, as: 'MataPelajaran', attributes: ['nama_mapel'] }] }] });
@@ -399,69 +380,41 @@ app.post('/api/kelas', verifyToken, async (req, res) => {
     const { nama_kelas } = req.body; const existingKelas = await Kelas.findOne({ where: { nama_kelas } });
     if (existingKelas) return res.status(400).json({ message: "Nama kelas sudah terdaftar." });
     const newKelas = await Kelas.create({ nama_kelas }); res.json({ message: "Kelas berhasil dibuat!", data: newKelas });
-  } catch (error) { res.status(500).json({ message: "Terjadi kesalahan pada server saat membuat kelas." }); }
+  } catch (error) { res.status(500).json({ message: "Terjadi kesalahan." }); }
 });
 
+// RUTE PENUGASAN MAPEL (ROBUST & TRANSPARAN)
 app.put('/api/kelas/:id_kelas/penugasan', verifyToken, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ message: "Hanya Admin!" });
-  const { id_kelas } = req.params;
-  const { wali_kelas_id, id_wali_kelas, penugasan_mapel } = req.body;
-  const t = await sequelize.transaction();
-
+  const { id_kelas } = req.params; const { wali_kelas_id, id_wali_kelas, penugasan_mapel } = req.body; const t = await sequelize.transaction();
   try {
-    // 1. Antisipasi variasi penamaan wali kelas dari frontend
     const targetWaliKelas = wali_kelas_id || id_wali_kelas || null;
-
-    await Kelas.update(
-      { id_wali_kelas: targetWaliKelas === "" ? null : targetWaliKelas },
-      { where: { id: id_kelas }, transaction: t }
-    );
-
-    // 2. Bersihkan seluruh data penugasan lama di kelas ini terlebih dahulu
+    await Kelas.update({ id_wali_kelas: targetWaliKelas === "" ? null : targetWaliKelas }, { where: { id: id_kelas }, transaction: t });
     await PenugasanGuru.destroy({ where: { id_kelas }, transaction: t });
-
-    // 3. Proses input data penugasan mengajar baru secara massal (bulk)
+    
     if (penugasan_mapel && penugasan_mapel.length > 0) {
       const dataToInsert = penugasan_mapel.map(p => {
-        // Antisipasi jika frontend mengirim guru_id / idGuru / id_guru
         const guruId = p.id_guru || p.guru_id || p.idGuru;
-        // Antisipasi jika frontend mengirim mapel_id / idMapel / id_mapel
         const mapelId = p.id_mapel || p.mapel_id || p.idMapel;
-
-        return {
-          id_kelas: id_kelas,
-          id_guru: guruId,
-          id_mapel: mapelId
-        };
+        return { id_kelas: id_kelas, id_guru: guruId, id_mapel: mapelId };
       });
-
-      // Validasi pastikan tidak ada data kosong/undefined yang lolos ke database
       const dataValid = dataToInsert.filter(d => d.id_guru && d.id_mapel);
-
-      if (dataValid.length > 0) {
-        await PenugasanGuru.bulkCreate(dataValid, { transaction: t });
-      }
+      if (dataValid.length > 0) { await PenugasanGuru.bulkCreate(dataValid, { transaction: t }); }
     }
-
-    await t.commit();
-    res.json({ message: "Penugasan kelas berhasil diperbarui!" });
-  } catch (error) {
-    await t.rollback();
-    // Mencetak log eror asli secara detail di server Vercel Anda
+    await t.commit(); res.json({ message: "Penugasan kelas berhasil diperbarui!" });
+  } catch (error) { 
+    await t.rollback(); 
     console.error("❌ GAGAL MENYIMPAN PENUGASAN KELAS:", error);
-    // Mengembalikan pesan eror asli ke frontend agar bisa dibaca di tab Network
-    res.status(500).json({ 
-      message: "Terjadi kesalahan internal pada server saat menyimpan penugasan.", 
-      error: error.message 
-    });
+    res.status(500).json({ message: "Gagal memproses penugasan.", error: error.message }); 
   }
 });
+
 app.delete('/api/kelas/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params; const jumlahSiswa = await Siswa.count({ where: { id_kelas: id } });
-    if (jumlahSiswa > 0) return res.status(400).json({ message: `Gagal menghapus! Kelas ini masih memiliki ${jumlahSiswa} siswa aktif. Pindahkan siswa terlebih dahulu.` });
-    await Kelas.destroy({ where: { id } }); return res.json({ message: "Kelas berhasil dihapus. Semua penugasan mengajar di kelas ini telah dibersihkan." });
-  } catch (error) { return res.status(500).json({ message: "Terjadi kesalahan pada server." }); }
+    if (jumlahSiswa > 0) return res.status(400).json({ message: `Gagal menghapus! Kelas ini masih memiliki ${jumlahSiswa} siswa aktif.` });
+    await Kelas.destroy({ where: { id } }); return res.json({ message: "Kelas berhasil dihapus." });
+  } catch (error) { return res.status(500).json({ message: "Terjadi kesalahan." }); }
 });
 
 // INPUT NILAI MASSAL (BULK)
@@ -487,7 +440,7 @@ app.put('/api/admin/promosi-kelas', verifyToken, async (req, res) => {
     if (!targetKelasId) return res.status(400).json({ message: "Tentukan kelas tujuan promosi." });
     const [affectedRows] = await Siswa.update({ id_kelas: targetKelasId, status_siswa: 'Aktif' }, { where: { id: { [Op.in]: siswaIds } } });
     res.json({ message: `Berhasil! ${affectedRows} siswa telah dipromosikan ke kelas baru.` });
-  } catch (error) { res.status(500).json({ error: "Gagal memproses kenaikan kelas di database." }); }
+  } catch (error) { res.status(500).json({ error: "Gagal memproses kenaikan kelas." }); }
 });
 
 app.get('/api/nilai/kelas/:id_kelas/mapel/:id_mapel', verifyToken, async (req, res) => {
@@ -591,20 +544,12 @@ app.post('/api/seeding-siswa', async (req, res) => {
     ];
     for (const siswa of dataDummy) {
       const newUser = await User.create({ username: siswa.username, name: siswa.name, role: 'siswa', password: 'password123' });
-      await Siswa.create({ 
-        userId: newUser.id, name: siswa.name, nisn: siswa.nisn, jenis_kelamin: siswa.jenis_kelamin, 
-        status_siswa: 'Aktif', 
-        id_kelas: null // ✨ Perbaikan: Di-set null agar tidak melanggar foreign key constraint di database cloud baru
-      });
+      await Siswa.create({ userId: newUser.id, name: siswa.name, nisn: siswa.nisn, jenis_kelamin: siswa.jenis_kelamin, status_siswa: 'Aktif', id_kelas: null });
     }
     res.status(201).json({ message: "5 Data dummy siswa berhasil dimasukkan!" });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Gunakan modul eksternal seeder jika ada rute di dalamnya
 app.use(seederRouter);
 
-// ==========================================
-// EXPORT UNTUK VERCEL SERVERLESS VIA COMMONJS
-// ==========================================
 module.exports = app;
