@@ -17,6 +17,7 @@ const seederRouter = require('./_routes/seeder.js');
 
 const app = express();
 
+app.set('trust proxy', 1);
 // ==========================================
 // 2. GLOBAL SECURITY & PARSING MIDDLEWARE
 // ==========================================
