@@ -1,23 +1,28 @@
 // ==========================================
-// 1. IMPORT LIBRARIES & DEPENDENCIES
+// 1. IMPORT LIBRARIES & DEPENDENCIES (ES MODULE)
 // ==========================================
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const jwt = require('jsonwebtoken');
-const rateLimit = require('express-rate-limit');
-const { body, validationResult } = require('express-validator');
-const { Op } = require('sequelize');
-// Import Konfigurasi Database & Seluruh Model Profil
-const sequelize = require('./_config/database');
-const { User, Admin, Guru, Siswa, Kepsek, Kelas, MataPelajaran, PenugasanGuru, Nilai } = require('./_models');
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
+import { body, validationResult } from 'express-validator';
+import { Op } from 'sequelize';
 
-const app = express(); 
+// Import Konfigurasi Database & Seluruh Model Profil
+import sequelize from './_config/database.js';
+import { User, Admin, Guru, Siswa, Kepsek, Kelas, MataPelajaran, PenugasanGuru, Nilai } from './_models/index.js';
+
+// Import Router
+import seederRouter from './_routes/seeder.js';
+
+const app = express();
+
 // ==========================================
 // 2. GLOBAL SECURITY & PARSING MIDDLEWARE
 // ==========================================
-app.use(helmet()); 
-app.use(helmet.hidePoweredBy()); 
+app.use(helmet());
+app.use(helmet.hidePoweredBy());
 app.use(helmet.xssFilter());
 app.use(cors());
 
@@ -25,7 +30,7 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-const SECRET_KEY = "kunci_rahasia_siakad_super_aman";
+const SECRET_KEY = process.env.JWT_SECRET || "kunci_rahasia_siakad_super_aman";
 
 // ==========================================
 // 3. SINKRONISASI DATABASE & AUTO-SEEDING (VERSI SERVERLESS)
@@ -38,7 +43,7 @@ async function connectAndSeed() {
     await sequelize.authenticate();
     await sequelize.sync({ alter: true });
     console.log('Database tersinkronisasi sempurna dengan Sequelize ORM.');
-    
+
     const adminExist = await User.findOne({ where: { username: 'admin' } });
     if (!adminExist) {
       const newAdmin = await User.create({
@@ -58,13 +63,11 @@ async function connectAndSeed() {
   }
 }
 
-// Jalankan pencatatan koneksi setiap kali ada request masuk
+// Jalankan koneksi setiap kali ada request masuk
 app.use(async (req, res, next) => {
   await connectAndSeed();
   next();
 });
-
-// PENTING: Jangan lupa di baris paling bawah sendiri file index.js Anda, tambahkan ini:
 
 // ==========================================
 // 4. SECURITY MIDDLEWARE (RATE LIMIT & JWT)
@@ -85,19 +88,19 @@ const verifyToken = (req, res, next) => {
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100, 
+  max: 100,
   message: {
     message: "Terlalu banyak upaya login dari komputer ini. Silakan coba lagi setelah 15 menit."
   },
-  standardHeaders: true, 
-  legacyHeaders: false,  
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 // ==========================================
 // 5. API ENDPOINTS & ROUTING
 // ==========================================
 
-// Terapkan rate-limiter khusus menjaga pintu gerbang Login API
+// Terapkan rate-limiter khusus untuk Login API
 app.use('/api/login', loginLimiter);
 
 // API AUTENTIKASI (LOGIN)
@@ -128,12 +131,12 @@ app.post('/api/login', async (req, res) => {
       if (userData.role === 'siswa' && userData.Siswa) profil = userData.Siswa;
       if (userData.role === 'kepsek' && userData.Kepsek) profil = userData.Kepsek;
 
-     const finalUser = {
-  ...profil,        // ✅ spread dulu
-  id: userData.id,  // ✅ baru override id dengan User.id yang benar, di akhir
-  username: userData.username,
-  role: userData.role,
-};
+      const finalUser = {
+        ...profil,
+        id: userData.id,
+        username: userData.username,
+        role: userData.role,
+      };
 
       const token = jwt.sign({ id: finalUser.id, role: finalUser.role }, SECRET_KEY, { expiresIn: '8h' });
       res.json({ message: "Login Berhasil", token, user: finalUser });
@@ -162,26 +165,25 @@ app.get('/api/dashboard/stats', verifyToken, async (req, res) => {
   }
 });
 
-
 // ==========================================
-// 2. API MASTER DATA PENGGUNA (CRUD)
+// API MASTER DATA PENGGUNA (CRUD)
 // ==========================================
 
 app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    let userId = req.user.id; // ID dari token auth session
-    const userRole = req.user.role; // Peran pengguna ('siswa', 'guru', 'admin', atau 'kepsek')
+    let userId = req.user.id;
+    const userRole = req.user.role;
 
     console.log(`📊 Request Update Masuk - ID Token: ${userId} | Role: ${userRole}`);
 
-    const { 
-      name, 
-      username, 
-      password, 
-      no_wa, 
-      jenis_kelamin, 
-      tanggal_lahir, 
+    const {
+      name,
+      username,
+      password,
+      no_wa,
+      jenis_kelamin,
+      tanggal_lahir,
       foto,
       alamat,
       spesialisasi,
@@ -190,7 +192,7 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
       pendidikan
     } = req.body;
 
-    // 🎯 VALIDASI NIP KHUSUS KEPSEK & GURU: Wajib 18 digit angka murni
+    // Validasi NIP khusus Kepsek & Guru
     if ((userRole === 'kepsek' || userRole === 'guru') && nip) {
       const nipRegex = /^[0-9]{18}$/;
       if (!nipRegex.test(String(nip).trim())) {
@@ -199,33 +201,28 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
       }
     }
 
-    // 1. Cek langsung ke tabel users utama
+    // Cek langsung ke tabel users utama
     let currentUser = await User.findByPk(userId, { transaction: t });
 
-    // 2. LOGIKA DETEKSI PINTAR BERDASARKAN ROLE (Saringan Lengkap termasuk Kepsek):
+    // Logika deteksi pintar berdasarkan role
     if (!currentUser) {
-      const { Admin, Siswa, Guru, Kepsek } = require('./_models'); 
-
       if (userRole === 'admin') {
         const dataAdmin = await Admin.findByPk(userId, { transaction: t });
         if (dataAdmin) userId = dataAdmin.userId;
-      } 
-      else if (userRole === 'siswa') {
+      } else if (userRole === 'siswa') {
         const dataSiswa = await Siswa.findByPk(userId, { transaction: t });
         if (dataSiswa) userId = dataSiswa.userId;
-      }
-      else if (userRole === 'guru') {
+      } else if (userRole === 'guru') {
         const dataGuru = await Guru.findByPk(userId, { transaction: t });
         if (dataGuru) userId = dataGuru.userId;
-      }
-      // 🛠️ TAMBAHAN FIX UNTUK KEPSEK:
-      else if (userRole === 'kepsek') {
+      } else if (userRole === 'kepsek') {
         console.log(`⚠️ ID ${userId} tidak ada di tabel users. Mencari di tabel kepseks...`);
-        const dataKepsek = await Kepsek.findOne({ where: { id: userId } }, { transaction: t }) || await Kepsek.findByPk(userId, { transaction: t });
+        const dataKepsek =
+          await Kepsek.findOne({ where: { id: userId }, transaction: t }) ||
+          await Kepsek.findByPk(userId, { transaction: t });
         if (dataKepsek) userId = dataKepsek.userId;
       }
 
-      // Ambil ulang data user setelah ID-nya dikoreksi
       currentUser = await User.findByPk(userId, { transaction: t });
     }
 
@@ -236,31 +233,26 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
 
     console.log(`🎯 TARGET UPDATE DIKUNCI ➔ User ID: ${userId} (${currentUser.username})`);
 
-    // 3. Update data Akun Utama (Tabel users)
+    // Update data Akun Utama (Tabel users)
     const updateUserData = {};
     if (username && username.trim() !== currentUser.username) {
       updateUserData.username = username.trim();
     }
     if (password) {
-      updateUserData.password = password; 
+      updateUserData.password = password;
     }
 
-    // 4. Update data akun utama di tabel Users (Case-Sensitive Fix)
+    // Update username dengan case-sensitive fix
     if (username && username.trim() !== currentUser.username && username.trim().toLowerCase() === currentUser.username.toLowerCase()) {
       await sequelize.query(
         'UPDATE users SET username = :username WHERE id = :id',
-        {
-          replacements: { username: username.trim(), id: userId },
-          transaction: t
-        }
+        { replacements: { username: username.trim(), id: userId }, transaction: t }
       );
     } else if (Object.keys(updateUserData).length > 0) {
       await User.update(updateUserData, { where: { id: userId }, transaction: t });
     }
 
-    // 5. Update data detail profil berdasarkan Role dari token
-    const { Admin, Siswa, Guru, Kepsek } = require('./_models');
-
+    // Update data detail profil berdasarkan Role
     if (userRole === 'admin') {
       let profilAdmin = await Admin.findOne({ where: { userId: userId }, transaction: t });
       if (profilAdmin) {
@@ -280,7 +272,7 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
           foto: foto || null
         }, { transaction: t });
       }
-      
+
     } else if (userRole === 'guru') {
       let profilGuru = await Guru.findOne({ where: { userId: userId }, transaction: t });
       if (profilGuru) {
@@ -296,21 +288,21 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
         if (pendidikan !== undefined) profilGuru.pendidikan = pendidikan;
         await profilGuru.save({ transaction: t });
       } else {
-        await Guru.create({ 
-          userId: userId, 
-          name: name.trim(), 
-          no_wa: no_wa || null, 
+        await Guru.create({
+          userId: userId,
+          name: name.trim(),
+          no_wa: no_wa || null,
           jenis_kelamin: jenis_kelamin,
           tanggal_lahir: tanggal_lahir || null,
           alamat: alamat || null,
-          spesialisasi: spesialisasi || null, 
+          spesialisasi: spesialisasi || null,
           nuptk: nuptk || null,
           nip: nip ? String(nip).trim() : null,
           pendidikan: pendidikan || 'S1 Pendidikan',
           foto: foto || null
         }, { transaction: t });
       }
-      
+
     } else if (userRole === 'siswa') {
       let profilSiswa = await Siswa.findOne({ where: { userId: userId }, transaction: t });
       if (profilSiswa) {
@@ -321,9 +313,9 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
         if (foto !== undefined) profilSiswa.foto = foto;
         await profilSiswa.save({ transaction: t });
       } else {
-        await Siswa.create({ 
-          userId: userId, 
-          name: name.trim(), 
+        await Siswa.create({
+          userId: userId,
+          name: name.trim(),
           jenis_kelamin: jenis_kelamin || 'Laki-laki',
           no_wa: no_wa || null,
           alamat: alamat || null,
@@ -331,15 +323,14 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
         }, { transaction: t });
       }
 
-    // 🛠️ TAMBAHAN LOGIKA BARU KHUSUS UNTUK KEPSEK (PIMPINAN):
     } else if (userRole === 'kepsek') {
       let profilKepsek = await Kepsek.findOne({ where: { userId: userId }, transaction: t });
       if (profilKepsek) {
         if (name) profilKepsek.name = name.trim();
         if (no_wa !== undefined) profilKepsek.no_wa = no_wa;
-        if (nip !== undefined) profilKepsek.nip = String(nip).trim(); // Menyimpan NIP 18 digit ke database
-        if (foto !== undefined) profilKepsek.foto = foto; // Menyimpan string file/base64 foto
-        if (alamat !== undefined) profilKepsek.alamat = alamat; // Sinkronisasi alamat jika ada di model
+        if (nip !== undefined) profilKepsek.nip = String(nip).trim();
+        if (foto !== undefined) profilKepsek.foto = foto;
+        if (alamat !== undefined) profilKepsek.alamat = alamat;
         await profilKepsek.save({ transaction: t });
         console.log(`💾 DATA PROFIL KEPSEK (${name}) BERHASIL DIKUNCI PERMANEN!`);
       } else {
@@ -354,13 +345,12 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
         console.log(`=== BARIS BARU TABEL KEPSEK BERHASIL DIBUAT ===`);
       }
     }
-    
+
     await t.commit();
-    
-    // Tarik data profil terbaru untuk dikembalikan ke frontend (Sinkronisasi Zustand)
+
     const updatedKepsek = userRole === 'kepsek' ? await Kepsek.findOne({ where: { userId } }) : null;
-    
-    return res.json({ 
+
+    return res.json({
       message: "Profil Anda berhasil diperbarui!",
       user: updatedKepsek ? { ...updatedKepsek.toJSON(), username: currentUser.username, role: userRole } : null
     });
@@ -371,6 +361,7 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
     return res.status(500).json({ message: "Terjadi kesalahan sistem pada server.", error: error.message });
   }
 });
+
 app.get('/api/users', verifyToken, async (req, res) => {
   const allowedRoles = ['admin', 'kepsek', 'guru'];
   if (!allowedRoles.includes(req.user.role)) return res.status(403).json({ message: "Akses Ditolak!" });
@@ -381,16 +372,16 @@ app.get('/api/users', verifyToken, async (req, res) => {
         { model: Admin },
         { model: Kepsek },
         { model: Guru },
-        { 
-          model: Siswa, 
-          include: [{ model: Kelas, as: 'Kelas', attributes: ['nama_kelas'] }] 
+        {
+          model: Siswa,
+          include: [{ model: Kelas, as: 'Kelas', attributes: ['nama_kelas'] }]
         }
       ],
       order: [['role', 'ASC']]
     });
 
     const formattedUsers = users.map(u => {
-      const userData = u.get({ plain: true }); 
+      const userData = u.get({ plain: true });
       let profilRaw = {};
 
       if (userData.role === 'admin') profilRaw = userData.Admin || {};
@@ -400,11 +391,11 @@ app.get('/api/users', verifyToken, async (req, res) => {
 
       const profilBersih = { ...profilRaw };
       const idProfilAsli = profilBersih.id;
-      delete profilBersih.id; 
+      delete profilBersih.id;
 
       return {
         ...profilBersih,
-        id: userData.id, 
+        id: userData.id,
         id_profil_internal: idProfilAsli,
         username: userData.username,
         role: userData.role,
@@ -419,25 +410,24 @@ app.get('/api/users', verifyToken, async (req, res) => {
   }
 });
 
-// Endpoint Tambah User Baru Terintegrasi dengan Validasi & Database Real
-app.post('/api/users', 
+// Endpoint Tambah User Baru
+app.post('/api/users',
   verifyToken,
   [
     body('password')
       .notEmpty().withMessage('Password wajib diisi')
       .isLength({ min: 3 }).withMessage('Password minimal harus 3 karakter'),
-      
     body('role')
       .isIn(['admin', 'guru', 'siswa', 'kepsek']).withMessage('Role pengguna tidak terdaftar')
-  ], 
+  ],
   async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ message: "Akses Ditolak!" });
-    
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        status: "fail", 
-        errors: errors.array().map(err => ({ field: err.path, message: err.msg })) 
+      return res.status(400).json({
+        status: "fail",
+        errors: errors.array().map(err => ({ field: err.path, message: err.msg }))
       });
     }
 
@@ -445,7 +435,7 @@ app.post('/api/users',
 
     try {
       const { name, username, password, role, nisn, nip, id_kelas, mata_pelajaran, jenis_kelamin, no_wa } = req.body;
-      
+
       const finalUsername = (role === 'siswa') ? nisn : (username || nip);
 
       if (!finalUsername || finalUsername.trim() === "") {
@@ -453,40 +443,38 @@ app.post('/api/users',
         return res.status(400).json({ message: "Username, NIP, atau NISN wajib diisi." });
       }
 
-      // 1. Buat Akun Utama di tabel Users
-      const newUser = await User.create({ 
-        username: finalUsername.trim(), 
-        password, 
-        role 
+      const newUser = await User.create({
+        username: finalUsername.trim(),
+        password,
+        role
       }, { transaction: t });
 
-      // 2. Buat Profil Cabang & Kunci Mati userId ke ID User Baru
       if (role === 'admin') {
         await Admin.create({ userId: newUser.id, name }, { transaction: t });
       } else if (role === 'kepsek') {
-        await Kepsek.create({ 
-          userId: newUser.id, 
-          name, 
-          nip, 
-          jenis_kelamin: jenis_kelamin || "Laki-laki", 
-          no_wa: no_wa || "-" 
+        await Kepsek.create({
+          userId: newUser.id,
+          name,
+          nip,
+          jenis_kelamin: jenis_kelamin || "Laki-laki",
+          no_wa: no_wa || "-"
         }, { transaction: t });
       } else if (role === 'guru') {
-        await Guru.create({ 
-          userId: newUser.id, 
-          name, 
-          nip, 
-          spesialisasi: mata_pelajaran || "Umum", 
-          jenis_kelamin: jenis_kelamin || "Laki-laki", 
-          no_wa: no_wa || "-" 
+        await Guru.create({
+          userId: newUser.id,
+          name,
+          nip,
+          spesialisasi: mata_pelajaran || "Umum",
+          jenis_kelamin: jenis_kelamin || "Laki-laki",
+          no_wa: no_wa || "-"
         }, { transaction: t });
       } else if (role === 'siswa') {
-        await Siswa.create({ 
-          userId: newUser.id, 
-          name: name, 
-          nisn, 
-          jenis_kelamin: jenis_kelamin || "Laki-laki", 
-          id_kelas: (!id_kelas || id_kelas === "") ? null : id_kelas 
+        await Siswa.create({
+          userId: newUser.id,
+          name: name,
+          nisn,
+          jenis_kelamin: jenis_kelamin || "Laki-laki",
+          id_kelas: (!id_kelas || id_kelas === "") ? null : id_kelas
         }, { transaction: t });
       }
 
@@ -503,7 +491,7 @@ app.post('/api/users',
   }
 );
 
-// Mengedit Data Siswa (Termasuk Kenaikan/Pindah Kelas & Password)
+// Edit Data User
 app.put('/api/users/:id', verifyToken, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ message: "Akses Ditolak!" });
   const t = await sequelize.transaction();
@@ -561,25 +549,23 @@ app.put('/api/admin/guru/:id', verifyToken, async (req, res) => {
 });
 
 // ==========================================
-// FIX REKAM AKADEMIK: KHS AKTIF & RIWAYAT
+// REKAM AKADEMIK: KHS AKTIF & RIWAYAT
 // ==========================================
 
-// 1. RUTE KHS AKTIF (Hanya menampilkan nilai di kelas saat ini)
+// KHS Aktif (hanya nilai di kelas saat ini)
 app.get('/api/nilai/me', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'siswa') {
       return res.status(403).json({ message: "Akses Ditolak!" });
     }
 
-    // Cari profil siswa untuk melihat kelas aktifnya saat ini (id_kelas)
     const profilSiswa = await Siswa.findOne({ where: { userId: req.user.id } });
     if (!profilSiswa) return res.json([]);
 
-    // 🛠️ FIX: Tambahkan kondisi id_kelas agar nilai dari kelas lama tidak ikut muncul di KHS!
     const dataNilai = await Nilai.findAll({
-      where: { 
+      where: {
         id_siswa: profilSiswa.id,
-        id_kelas: profilSiswa.id_kelas // <-- Mengunci hanya kelas aktif saat ini
+        id_kelas: profilSiswa.id_kelas
       },
       include: [{ model: MataPelajaran, as: 'MataPelajaran' }]
     });
@@ -603,9 +589,7 @@ app.get('/api/nilai/me', verifyToken, async (req, res) => {
   }
 });
 
-// 2. RUTE ARSIP RIWAYAT (Bypass 404 - Menggunakan kata tunggal unik)
-// 🎯 KOREKSI TOTAL: Ubah rute backend agar pas dengan yang dipanggil frontend Anda!
-// Di dalam server.js - Pastikan ditaruh di bawah verifyToken
+// Arsip Riwayat Nilai Siswa
 app.get('/api/riwayatsiswa', verifyToken, async (req, res) => {
   try {
     const profilSiswa = await Siswa.findOne({ where: { userId: req.user.id } });
@@ -613,39 +597,40 @@ app.get('/api/riwayatsiswa', verifyToken, async (req, res) => {
 
     const semuaNilai = await Nilai.findAll({
       where: { id_siswa: profilSiswa.id },
-      include: [{ model: MataPelajaran, as: 'MataPelajaran' }, { model: Kelas, as: 'Kelas' }],
+      include: [
+        { model: MataPelajaran, as: 'MataPelajaran' },
+        { model: Kelas, as: 'Kelas' }
+      ],
       order: [['id_kelas', 'ASC'], ['semester', 'ASC']]
     });
 
     const formatRiwayat = semuaNilai.map(n => {
-        const d = n.toJSON();
-        return {
-            nama_kelas: d.Kelas?.nama_kelas || 'Kelas Terhapus',
-            nama_mapel: d.MataPelajaran?.nama_mapel || '-',
-            kkm: d.MataPelajaran?.kkm || 75,
-            semester: d.semester,
-            nilai_harian: d.nilai_harian || 0,
-            nilai_uts: d.nilai_uts || 0,
-            nilai_uas: d.nilai_uas || 0
-        };
+      const d = n.toJSON();
+      return {
+        nama_kelas: d.Kelas?.nama_kelas || 'Kelas Terhapus',
+        nama_mapel: d.MataPelajaran?.nama_mapel || '-',
+        kkm: d.MataPelajaran?.kkm || 75,
+        semester: d.semester,
+        nilai_harian: d.nilai_harian || 0,
+        nilai_uts: d.nilai_uts || 0,
+        nilai_uas: d.nilai_uas || 0
+      };
     });
     res.json(formatRiwayat);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
+
 // ==========================================
-// 3. API KELAS & PENUGASAN
+// API KELAS & PENUGASAN
 // ==========================================
 app.get('/api/kelas', verifyToken, async (req, res) => {
   try {
     const kelasData = await Kelas.findAll({
       include: [
         { model: Guru, as: 'WaliKelas', attributes: ['name', 'nip'] },
-        { 
-          model: Siswa, 
-          as: 'DaftarSiswa' 
-        }, 
+        { model: Siswa, as: 'DaftarSiswa' },
         {
           model: PenugasanGuru, as: 'Penugasan',
           include: [
@@ -703,23 +688,19 @@ app.delete('/api/kelas/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // 1. PENCEGAHAN MUTLAK: Cek Siswa (Wajib Kosong)
     const jumlahSiswa = await Siswa.count({ where: { id_kelas: id } });
     if (jumlahSiswa > 0) {
-      return res.status(400).json({ 
-        message: `Gagal menghapus! Kelas ini masih memiliki ${jumlahSiswa} siswa aktif. Pindahkan siswa terlebih dahulu.` 
+      return res.status(400).json({
+        message: `Gagal menghapus! Kelas ini masih memiliki ${jumlahSiswa} siswa aktif. Pindahkan siswa terlebih dahulu.`
       });
     }
 
-    // 2. INFORMASI AMAN: Ambil data kelas untuk melihat siapa wali kelasnya (hanya untuk log/notifikasi)
     const kelas = await Kelas.findByPk(id, { include: ['WaliKelas'] });
     if (kelas && kelas.WaliKelas) {
       console.log(`💡 Info: Menghapus kelas yang diwalikan oleh ${kelas.WaliKelas.name}. Guru otomatis dibebastugaskan.`);
     }
 
-    // 3. Eksekusi Hapus Kelas
     await Kelas.destroy({ where: { id } });
-    
     return res.json({ message: "Kelas berhasil dihapus. Semua penugasan mengajar di kelas ini telah dibersihkan." });
   } catch (error) {
     console.error(error);
@@ -728,15 +709,10 @@ app.delete('/api/kelas/:id', verifyToken, async (req, res) => {
 });
 
 // ==========================================
-// 4. API AKADEMIK & NILAI
+// API AKADEMIK & NILAI
 // ==========================================
 
-
-
-// ==========================================
-// 4. API AKADEMIK & NILAI
-// ==========================================
-// 🎯 RUTE MASSAL / BULK (STATIS)
+// Input Nilai Massal (Bulk)
 app.post('/api/nilai/bulk', verifyToken, async (req, res) => {
   if (req.user.role !== 'guru' && req.user.role !== 'admin') return res.status(403).json({ message: "Akses ditolak." });
   const { id_kelas, id_mapel, semester, data_nilai } = req.body;
@@ -756,7 +732,7 @@ app.post('/api/nilai/bulk', verifyToken, async (req, res) => {
   }
 });
 
-// 🎯 RUTE PROMOSI KELAS & KELULUSAN
+// Promosi Kelas & Kelulusan
 app.put('/api/admin/promosi-kelas', verifyToken, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ message: "Akses ditolak!" });
   const { siswaIds, targetKelasId, statusBaru } = req.body;
@@ -788,41 +764,42 @@ app.put('/api/admin/promosi-kelas', verifyToken, async (req, res) => {
   }
 });
 
-// ⚠️ KELOMPOK RUTE DINAMIS (DITARUH DI PALING BAWAH RUMPUN AGAR TIDAK BENTROK)
+// Nilai per Kelas & Mapel
 app.get('/api/nilai/kelas/:id_kelas/mapel/:id_mapel', verifyToken, async (req, res) => {
   try {
-      const { id_kelas, id_mapel } = req.params;
-      const { semester } = req.query;
+    const { id_kelas, id_mapel } = req.params;
+    const { semester } = req.query;
 
-      const siswaDiKelas = await Siswa.findAll({ where: { id_kelas: id_kelas }, order: [['name', 'ASC']] });
-      const daftarNilai = await Nilai.findAll({
-          where: { id_kelas: id_kelas, id_mapel: id_mapel, semester: semester || 'Ganjil' }
-      });
+    const siswaDiKelas = await Siswa.findAll({ where: { id_kelas: id_kelas }, order: [['name', 'ASC']] });
+    const daftarNilai = await Nilai.findAll({
+      where: { id_kelas: id_kelas, id_mapel: id_mapel, semester: semester || 'Ganjil' }
+    });
 
-      const result = siswaDiKelas.map(s => {
-          const n = daftarNilai.find(v => v.id_siswa === s.id);
-          return {
-              id_siswa: s.id, 
-              nama_siswa: s.name,
-              nisn: s.nisn,
-              jenis_kelamin: s.jenis_kelamin,
-              nilai_harian: n ? n.nilai_harian : 0,
-              nilai_uts: n ? n.nilai_uts : 0,
-              nilai_uas: n ? n.nilai_uas : 0
-          };
-      });
+    const result = siswaDiKelas.map(s => {
+      const n = daftarNilai.find(v => v.id_siswa === s.id);
+      return {
+        id_siswa: s.id,
+        nama_siswa: s.name,
+        nisn: s.nisn,
+        jenis_kelamin: s.jenis_kelamin,
+        nilai_harian: n ? n.nilai_harian : 0,
+        nilai_uts: n ? n.nilai_uts : 0,
+        nilai_uas: n ? n.nilai_uas : 0
+      };
+    });
 
-      res.json(result);
+    res.json(result);
   } catch (error) {
-      console.error("❌ Error Fetch Nilai:", error);
-      res.status(500).json({ error: error.message });
+    console.error("❌ Error Fetch Nilai:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
+// Rekap Nilai per Kelas (Admin)
 app.get('/api/admin/rekap-kelas/:id_kelas', verifyToken, async (req, res) => {
   try {
     const id_kelas = req.params.id_kelas;
-    
+
     const siswaData = await Siswa.findAll({
       where: { id_kelas: id_kelas, status_siswa: 'Aktif' },
       include: [{
@@ -841,7 +818,6 @@ app.get('/api/admin/rekap-kelas/:id_kelas', verifyToken, async (req, res) => {
         siswa.DaftarNilai.forEach(n => {
           const na = Math.round((n.nilai_harian * 0.2) + (n.nilai_uts * 0.3) + (n.nilai_uas * 0.5));
           totalNilai += na;
-          
           const kkm = n.MataPelajaran?.kkm || 75;
           if (na < kkm) mapelMerah++;
         });
@@ -864,23 +840,19 @@ app.get('/api/admin/rekap-kelas/:id_kelas', verifyToken, async (req, res) => {
   }
 });
 
+// Detail Nilai Siswa (Admin View)
 app.get('/api/admin/nilai-siswa/:id', verifyToken, async (req, res) => {
   try {
     const userIdDariFrontend = req.params.id;
 
-    // 1. 🎯 FIX: Cari profil siswa berdasarkan userId (karena yang dikirim frontend adalah ID User)
     const profilSiswa = await Siswa.findOne({ where: { userId: userIdDariFrontend } });
     if (!profilSiswa) return res.json([]);
 
-    // 2. 🎯 FIX: Hapus filter id_kelas agar NILAI MASA LALU ikut ketarik semua
     const nilaiData = await Nilai.findAll({
-      where: { 
-        id_siswa: profilSiswa.id // Cukup filter berdasarkan ID siswa saja
-      },
-      // Ikutsertakan model Kelas jika Anda ingin menampilkan nama kelas secara dinamis di modal
+      where: { id_siswa: profilSiswa.id },
       include: [
         { model: MataPelajaran, as: 'MataPelajaran' },
-        { model: Kelas, as: 'Kelas' } // Tambahkan ini jika relasinya sudah diset di models/index.js
+        { model: Kelas, as: 'Kelas' }
       ]
     });
 
@@ -890,9 +862,8 @@ app.get('/api/admin/nilai-siswa/:id', verifyToken, async (req, res) => {
         nama_mapel: data.MataPelajaran?.nama_mapel || 'Unknown',
         kkm: data.MataPelajaran?.kkm || 75,
         semester: data.semester,
-        // 3. 🎯 FIX: Wajib kirim 'tahun_ajaran' dan 'nama_kelas' agar fungsi kelompokAkademik di React tidak kosong!
         tahun_ajaran: data.tahun_ajaran || 'Tidak Diketahui',
-        nama_kelas: data.Kelas?.nama_kelas || 'Riwayat Kelas', 
+        nama_kelas: data.Kelas?.nama_kelas || 'Riwayat Kelas',
         nilai_harian: data.nilai_harian,
         nilai_uts: data.nilai_uts,
         nilai_uas: data.nilai_uas
@@ -905,8 +876,9 @@ app.get('/api/admin/nilai-siswa/:id', verifyToken, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 // ==========================================
-// 5. API MATA PELAJARAN
+// API MATA PELAJARAN
 // ==========================================
 app.get('/api/mapel', verifyToken, async (req, res) => {
   try { res.json(await MataPelajaran.findAll()); } catch (error) { res.status(500).json({ error: "Gagal." }); }
@@ -937,42 +909,39 @@ app.delete('/api/mapel/:id', verifyToken, async (req, res) => {
 });
 
 // ==========================================
-// API KHUSUS GURU (Anti-Gagal Relasi & Bypass 401)
+// API KHUSUS GURU
 // ==========================================
 app.get('/api/guru/my-classes', verifyToken, async (req, res) => {
   try {
     console.log("🔍 Menjalankan Kueri untuk User ID:", req.user.id);
 
-    // 0. 🎯 TAMBAHAN: Cari profil Guru dulu berdasarkan userId dari token
     const profilGuru = await Guru.findOne({ where: { userId: req.user.id } });
     if (!profilGuru) {
       console.log("⚠️ Profil guru tidak ditemukan untuk User ID:", req.user.id);
-      return res.json([]); // Kembalikan array kosong jika belum punya profil guru
+      return res.json([]);
     }
 
-    // 1. Cari data kelas mengajar berdasarkan profilGuru.id
     const penugasan = await PenugasanGuru.findAll({
-      where: { id_guru: profilGuru.id },   // ✅ pakai Guru.id
+      where: { id_guru: profilGuru.id },
       include: [{ model: Kelas, all: true }]
     });
 
-    const kelasWali = await Kelas.findAll({ 
-      where: { id_wali_kelas: profilGuru.id }   // ✅ pakai Guru.id
+    const kelasWali = await Kelas.findAll({
+      where: { id_wali_kelas: profilGuru.id }
     });
 
-    // 3. Gabungkan seluruh data kelas ke dalam Map agar tidak duplikat
     const mapKelas = new Map();
-    
+
     kelasWali.forEach(k => mapKelas.set(k.id, { id_kelas: k.id, nama_kelas: k.nama_kelas }));
-    
+
     for (const p of penugasan) {
       const dataPlain = p.get({ plain: true });
       const objekKelas = dataPlain.Kelas || dataPlain.kelas;
-      
+
       if (objekKelas) {
-        mapKelas.set(objekKelas.id, { 
-          id_kelas: objekKelas.id, 
-          nama_kelas: objekKelas.nama_kelas 
+        mapKelas.set(objekKelas.id, {
+          id_kelas: objekKelas.id,
+          nama_kelas: objekKelas.nama_kelas
         });
       } else {
         const kelasManual = await Kelas.findByPk(p.id_kelas);
@@ -984,7 +953,7 @@ app.get('/api/guru/my-classes', verifyToken, async (req, res) => {
 
     const hasilAkhir = Array.from(mapKelas.values());
     console.log(`📊 Sukses! Mengirim data ${hasilAkhir.length} kelas untuk Guru ID: ${profilGuru.id}`);
-    
+
     return res.json(hasilAkhir);
 
   } catch (error) {
@@ -993,50 +962,51 @@ app.get('/api/guru/my-classes', verifyToken, async (req, res) => {
   }
 });
 
+// ==========================================
+// SEEDING DATA DUMMY
+// ==========================================
 app.post('/api/seeding-siswa', async (req, res) => {
-    try {
-        const dataDummy = [
-            { username: "4829103847", name: "Muhammad Fajar", nisn: "4829103847", jenis_kelamin: "Laki-laki" },
-            { username: "7104928374", name: "Ahmad Rifai", nisn: "7104928374", jenis_kelamin: "Laki-laki" },
-            { username: "1938475620", name: "Siti Nurhaliza", nisn: "1938475620", jenis_kelamin: "Perempuan" },
-            { username: "8392014756", name: "Rizky Pratama", nisn: "8392014756", jenis_kelamin: "Laki-laki" },
-            { username: "2049381756", name: "Dinda Lestari", nisn: "2049381756", jenis_kelamin: "Perempuan" }
-        ];
+  try {
+    const dataDummy = [
+      { username: "4829103847", name: "Muhammad Fajar", nisn: "4829103847", jenis_kelamin: "Laki-laki" },
+      { username: "7104928374", name: "Ahmad Rifai", nisn: "7104928374", jenis_kelamin: "Laki-laki" },
+      { username: "1938475620", name: "Siti Nurhaliza", nisn: "1938475620", jenis_kelamin: "Perempuan" },
+      { username: "8392014756", name: "Rizky Pratama", nisn: "8392014756", jenis_kelamin: "Laki-laki" },
+      { username: "2049381756", name: "Dinda Lestari", nisn: "2049381756", jenis_kelamin: "Perempuan" }
+    ];
 
-        for (const siswa of dataDummy) {
-            const newUser = await User.create({
-                username: siswa.username,
-                name: siswa.name,
-                role: 'siswa',
-                password: 'password123' 
-            });
+    for (const siswa of dataDummy) {
+      const newUser = await User.create({
+        username: siswa.username,
+        name: siswa.name,
+        role: 'siswa',
+        password: 'password123'
+      });
 
-            await Siswa.create({
-                userId: newUser.id, 
-                name: siswa.name,
-                nisn: siswa.nisn,
-                jenis_kelamin: siswa.jenis_kelamin,
-                status_siswa: 'Aktif',
-                id_kelas: 3 // <-- GANTI DENGAN ID KELAS X ANDA (Misal: 3)
-            });
-        }
-
-        res.status(201).json({ message: "5 Data dummy langsung masuk Kelas X!" });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+      await Siswa.create({
+        userId: newUser.id,
+        name: siswa.name,
+        nisn: siswa.nisn,
+        jenis_kelamin: siswa.jenis_kelamin,
+        status_siswa: 'Aktif',
+        id_kelas: 3
+      });
     }
+
+    res.status(201).json({ message: "5 Data dummy langsung masuk Kelas X!" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
+// ==========================================
+// ROUTER SEEDER & START SERVER
+// ==========================================
+app.use(seederRouter);
 
-
-
-// Panggil router seeder (Pastikan file routes/seeder.js ada)
-const seederRouter = require('./_routes/seeder');
-app.use(seederRouter); 
-
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-    console.log(`🚀 Server SIAKAD ORM siap di http://localhost:${PORT}`);
+  console.log(`🚀 Server SIAKAD ORM siap di http://localhost:${PORT}`);
 });
 
-module.exports = app;
+export default app;
