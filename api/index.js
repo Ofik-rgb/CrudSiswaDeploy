@@ -11,7 +11,12 @@ import { Op } from 'sequelize';
 
 // Import Konfigurasi Database & Seluruh Model Profil
 import sequelize from './_config/database.js';
-import models from './_models/index.js';
+
+
+// 📄 GANTI DENGAN SINTAKS STAR IMPORT INI:
+import * as models from './_models/index.js';
+
+// Bongkar objeknya di bawahnya seperti biasa
 const { User, Admin, Guru, Siswa, Kepsek, Kelas, MataPelajaran, PenugasanGuru, Nilai } = models;
 
 // Import Router
