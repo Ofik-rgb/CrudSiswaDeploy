@@ -9,17 +9,18 @@ const sequelize = new Sequelize(
     host: process.env.DB_HOST, 
     dialect: 'mysql',
     logging: false,
-    dialectModule: mysql2, // Memaksa bundler Vercel membawa modul mysql2
+    dialectModule: mysql2, 
     
-    // 💡 OPTIMASI POOL TERBAIK UNTUK SERVERLESS CLOUD GRATISAN
+    // 💡 SOLUSI RADIKAL: Eviksi Kilat Khusus Database Berkuota Ketat (Max 5)
     pool: {
-      max: 2,         // Naikkan ke 2 agar instansi serverless tidak mengunci dirinya sendiri
+      max: 1,         // Mutlak 1 koneksi saja per instansi lambda Vercel
       min: 0,
-      idle: 1000,     // Langsung putus koneksi dalam 1 detik jika sudah tidak ada aktivitas
-      acquire: 8000   // Menyerah dalam 8 detik (wajib di bawah limit 10 detik Vercel Hobby!)
+      idle: 500,      // ⚡ POTONG KONEKSI DALAM 0.5 DETIK jika sedang menganggur
+      evict: 500,     // ⚡ Bersihkan antrean mati setiap 0.5 detik tanpa ampun
+      acquire: 15000  // Beri kelonggaran waktu tunggu antrean slot kosong
     },
     dialectOptions: {
-      connectTimeout: 8000 // Batasi waktu jabat tangan jaringan awal maksimal 8 detik
+      connectTimeout: 15000
     }
   }
 );
