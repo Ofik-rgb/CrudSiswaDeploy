@@ -11,7 +11,6 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   
   const setAuthUser = useStore((state) => state.setAuthUser);
- 
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -19,20 +18,13 @@ const Login = () => {
     setError(''); 
 
     try {
-      // 📄 PERBAIKAN: Gunakan jalur relatif '/api/auth/login'
-      // dan kirim properti 'username' sesuai kebutuhan backend Anda
       const response = await axios.post('/api/auth/login', {
-        username: identifier, // 'identifier' di-mapping ke 'username' agar dibaca oleh backend
+        username: identifier, 
         password
       });
 
       localStorage.setItem('token', response.data.token);
-      
-      // 📄 PERBAIKAN: Sesuaikan dengan struktur return object dari backend
-      setAuthUser({
-        username: response.data.username,
-        role: response.data.role
-      });
+      setAuthUser(response.data.user);
       
     } catch (err) {
       setError(err.response?.data?.message || 'Terjadi kesalahan tidak terduga pada server.');
@@ -46,14 +38,10 @@ const Login = () => {
       className="min-h-screen flex items-center justify-center p-4 sm:p-8 bg-cover bg-center bg-no-repeat relative"
       style={{ backgroundImage: "url('/bg-sekolah.png')" }} 
     >
-      
-      {}
       <div className="absolute inset-0 bg-black/40"></div>
 
-      {}
       <div className="bg-white max-w-md w-full rounded-2xl shadow-2xl overflow-hidden relative z-10 animate-fade-in-up">
         
-        {}
         <div className="bg-blue-600 p-8 text-center">
           <div className="bg-white p-3 rounded-full inline-block mb-3 shadow-lg">
             <School size={36} className="text-blue-700" />
