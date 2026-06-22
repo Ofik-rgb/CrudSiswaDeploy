@@ -94,22 +94,14 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// ==========================================
-// 5. API ENDPOINTS & ROUTING
-// ==========================================
-
-// ==========================================
-// 5. API ENDPOINTS & ROUTING
-// ==========================================
-
-// 📄 PERBAIKAN 1: Sesuaikan jalur rate-limiter
-app.use('/api/auth/login', loginLimiter);
-
 // API AUTENTIKASI (LOGIN)
-// 📄 PERBAIKAN 2: Ubah rute menjadi '/api/auth/login' agar pas dengan Frontend
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { identifier, password } = req.body;
+    // 📄 PERBAIKAN: Ambil 'identifier' DAN 'username' dari request body
+    const { identifier, username, password } = req.body;
+    
+    // Gunakan salah satu yang tersedia (fallback jika salah satu kosong)
+    const loginKey = identifier || username;
 
     const user = await User.findOne({
       include: [
@@ -118,10 +110,10 @@ app.post('/api/auth/login', async (req, res) => {
       where: {
         password: password,
         [Op.or]: [
-          { username: identifier },
-          { '$Siswa.nisn$': identifier },
-          { '$Guru.nip$': identifier },
-          { '$Kepsek.nip$': identifier }
+          { username: loginKey },           // 📄 Ganti dengan loginKey
+          { '$Siswa.nisn$': loginKey },     // 📄 Ganti dengan loginKey
+          { '$Guru.nip$': loginKey },       // 📄 Ganti dengan loginKey
+          { '$Kepsek.nip$': loginKey }      // 📄 Ganti dengan loginKey
         ]
       }
     });
