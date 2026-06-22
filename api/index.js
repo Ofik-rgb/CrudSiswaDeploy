@@ -404,18 +404,58 @@ app.post('/api/kelas', verifyToken, async (req, res) => {
 
 app.put('/api/kelas/:id_kelas/penugasan', verifyToken, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ message: "Hanya Admin!" });
-  const { id_kelas } = req.params; const { wali_kelas_id, penugasan_mapel } = req.body; const t = await sequelize.transaction();
-  try {
-    await Kelas.update({ id_wali_kelas: wali_kelas_id || null }, { where: { id: id_kelas }, transaction: t });
-    await PenugasanGuru.destroy({ where: { id_kelas }, transaction: t });
-    if (penugasan_mapel && penugasan_mapel.length > 0) {
-      const dataToInsert = penugasan_mapel.map(p => ({ id_kelas, id_guru: p.id_guru, id_mapel: p.id_mapel }));
-      await PenugasanGuru.bulkCreate(dataToInsert, { transaction: t });
-    }
-    await t.commit(); res.json({ message: "Penugasan kelas berhasil diperbarui!" });
-  } catch (error) { await t.rollback(); res.status(500).json({ error: "Terjadi kesalahan saat menyimpan penugasan." }); }
-});
+  const { id_kelas } = req.params;
+  const { wali_kelas_id, id_wali_kelas, penugasan_mapel } = req.body;
+  const t = await sequelize.transaction();
 
+  try {
+    // 1. Antisipasi variasi penamaan wali kelas dari frontend
+    const targetWaliKelas = wali_kelas_id || id_wali_kelas || null;
+
+    await Kelas.update(
+      { id_wali_kelas: targetWaliKelas === "" ? null : targetWaliKelas },
+      { where: { id: id_kelas }, transaction: t }
+    );
+
+    // 2. Bersihkan seluruh data penugasan lama di kelas ini terlebih dahulu
+    await PenugasanGuru.destroy({ where: { id_kelas }, transaction: t });
+
+    // 3. Proses input data penugasan mengajar baru secara massal (bulk)
+    if (penugasan_mapel && penugasan_mapel.length > 0) {
+      const dataToInsert = penugasan_mapel.map(p => {
+        // Antisipasi jika frontend mengirim guru_id / idGuru / id_guru
+        const guruId = p.id_guru || p.guru_id || p.idGuru;
+        // Antisipasi jika frontend mengirim mapel_id / idMapel / id_mapel
+        const mapelId = p.id_mapel || p.mapel_id || p.idMapel;
+
+        return {
+          id_kelas: id_kelas,
+          id_guru: guruId,
+          id_mapel: mapelId
+        };
+      });
+
+      // Validasi pastikan tidak ada data kosong/undefined yang lolos ke database
+      const dataValid = dataToInsert.filter(d => d.id_guru && d.id_mapel);
+
+      if (dataValid.length > 0) {
+        await PenugasanGuru.bulkCreate(dataValid, { transaction: t });
+      }
+    }
+
+    await t.commit();
+    res.json({ message: "Penugasan kelas berhasil diperbarui!" });
+  } catch (error) {
+    await t.rollback();
+    // Mencetak log eror asli secara detail di server Vercel Anda
+    console.error("❌ GAGAL MENYIMPAN PENUGASAN KELAS:", error);
+    // Mengembalikan pesan eror asli ke frontend agar bisa dibaca di tab Network
+    res.status(500).json({ 
+      message: "Terjadi kesalahan internal pada server saat menyimpan penugasan.", 
+      error: error.message 
+    });
+  }
+});
 app.delete('/api/kelas/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params; const jumlahSiswa = await Siswa.count({ where: { id_kelas: id } });
