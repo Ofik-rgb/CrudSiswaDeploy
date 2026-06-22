@@ -529,8 +529,17 @@ app.get('/api/admin/nilai-siswa/:id', verifyToken, async (req, res) => {
 });
 
 // API MATA PELAJARAN
+// ==========================================
+// API MATA PELAJARAN (ROBUST & TRANSPARAN)
+// ==========================================
 app.get('/api/mapel', verifyToken, async (req, res) => {
-  try { res.json(await MataPelajaran.findAll()); } catch (error) { res.status(500).json({ error: "Gagal." }); }
+  try { 
+    const data = await MataPelajaran.findAll(); 
+    res.json(data); 
+  } catch (error) { 
+    console.error("❌ GAGAL MENGAMBIL MAPEL:", error);
+    res.status(500).json({ message: "Gagal mengambil data mata pelajaran.", error: error.message }); 
+  }
 });
 
 app.post('/api/mapel', verifyToken, async (req, res) => {
@@ -538,7 +547,10 @@ app.post('/api/mapel', verifyToken, async (req, res) => {
   try {
     const newMapel = await MataPelajaran.create({ nama_mapel: req.body.nama_mapel, kkm: req.body.kkm || 75 });
     res.json({ message: "Ditambahkan!", data: newMapel });
-  } catch (error) { res.status(500).json({ message: "Gagal menambahkan." }); }
+  } catch (error) { 
+    console.error("❌ GAGAL MENAMBAH MAPEL:", error);
+    res.status(500).json({ message: "Gagal menambahkan mata pelajaran.", error: error.message }); 
+  }
 });
 
 app.put('/api/mapel/:id', verifyToken, async (req, res) => {
@@ -546,7 +558,10 @@ app.put('/api/mapel/:id', verifyToken, async (req, res) => {
   try {
     await MataPelajaran.update({ nama_mapel: req.body.nama_mapel }, { where: { id: req.params.id } });
     res.json({ message: "Diperbarui!" });
-  } catch (error) { res.status(500).json({ message: "Gagal memperbarui." }); }
+  } catch (error) { 
+    console.error("❌ GAGAL MEMPERBARUI MAPEL:", error);
+    res.status(500).json({ message: "Gagal memperbarui mata pelajaran.", error: error.message }); 
+  }
 });
 
 app.delete('/api/mapel/:id', verifyToken, async (req, res) => {
@@ -554,9 +569,11 @@ app.delete('/api/mapel/:id', verifyToken, async (req, res) => {
   try {
     await MataPelajaran.destroy({ where: { id: req.params.id } });
     res.json({ message: "Dihapus." });
-  } catch (error) { res.status(500).json({ message: "Gagal menghapus." }); }
+  } catch (error) { 
+    console.error("❌ GAGAL MENGHAPUS MAPEL:", error);
+    res.status(500).json({ message: "Gagal menghapus mata pelajaran.", error: error.message }); 
+  }
 });
-
 // API KHUSUS GURU
 app.get('/api/guru/my-classes', verifyToken, async (req, res) => {
   try {
