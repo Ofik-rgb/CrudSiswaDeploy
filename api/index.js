@@ -11,7 +11,8 @@ import { Op } from 'sequelize';
 
 // Import Konfigurasi Database & Seluruh Model Profil
 import sequelize from './_config/database.js';
-import { User, Admin, Guru, Siswa, Kepsek, Kelas, MataPelajaran, PenugasanGuru, Nilai } from './_models/index.js';
+import models from './_models/index.js';
+const { User, Admin, Guru, Siswa, Kepsek, Kelas, MataPelajaran, PenugasanGuru, Nilai } = models;
 
 // Import Router
 import seederRouter from './_routes/seeder.js';
