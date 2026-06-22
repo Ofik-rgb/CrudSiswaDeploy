@@ -9,14 +9,17 @@ const sequelize = new Sequelize(
     host: process.env.DB_HOST, 
     dialect: 'mysql',
     logging: false,
-    dialectModule: mysql2, // Paksa vercel membungkus mysql2
+    dialectModule: mysql2, // Memaksa bundler Vercel membawa modul mysql2
     
-    // 💡 SOLUSI UTAMA: Batasi pool koneksi khusus untuk serverless
+    // 💡 OPTIMASI POOL TERBAIK UNTUK SERVERLESS CLOUD GRATISAN
     pool: {
-      max: 1,         // Maksimal 1 koneksi saja per instansi lambda Vercel
-      min: 0,         // Jika tidak ada request, turunkan jadi 0 koneksi
-      idle: 5000,     // Putus koneksi otomatis jika menganggur selama 5 detik
-      acquire: 30000  // Waktu toleransi maksimal untuk jabat tangan ke database
+      max: 2,         // Naikkan ke 2 agar instansi serverless tidak mengunci dirinya sendiri
+      min: 0,
+      idle: 1000,     // Langsung putus koneksi dalam 1 detik jika sudah tidak ada aktivitas
+      acquire: 8000   // Menyerah dalam 8 detik (wajib di bawah limit 10 detik Vercel Hobby!)
+    },
+    dialectOptions: {
+      connectTimeout: 8000 // Batasi waktu jabat tangan jaringan awal maksimal 8 detik
     }
   }
 );
