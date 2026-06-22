@@ -386,22 +386,63 @@ app.post('/api/kelas', verifyToken, async (req, res) => {
 // RUTE PENUGASAN MAPEL (ROBUST & TRANSPARAN)
 app.put('/api/kelas/:id_kelas/penugasan', verifyToken, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ message: "Hanya Admin!" });
-  const { id_kelas } = req.params; const { wali_kelas_id, id_wali_kelas, penugasan_mapel } = req.body; const t = await sequelize.transaction();
+  const { id_kelas } = req.params; 
+  const { wali_kelas_id, id_wali_kelas, penugasan_mapel } = req.body; 
+  const t = await sequelize.transaction();
+
   try {
-    const targetWaliKelas = wali_kelas_id || id_wali_kelas || null;
-    await Kelas.update({ id_wali_kelas: targetWaliKelas === "" ? null : targetWaliKelas }, { where: { id: id_kelas }, transaction: t });
+    let targetWaliKelas = wali_kelas_id || id_wali_kelas || null;
+    if (targetWaliKelas === "") targetWaliKelas = null;
+
+    // ✨ KORIDOR PENYELARASAN ID (User ID -> Guru ID Internal)
+    if (targetWaliKelas) {
+      // 1. Cek apakah frontend mengirim User ID. Jika iya, ambil Guru ID internalnya
+      const guruByUserId = await Guru.findOne({ where: { userId: targetWaliKelas }, transaction: t });
+      if (guruByUserId) {
+        targetWaliKelas = guruByUserId.id; 
+      } else {
+        // 2. Jika tidak ketemu, pastikan ID tersebut memang Guru ID internal yang valid
+        const guruById = await Guru.findByPk(targetWaliKelas, { transaction: t });
+        if (!guruById) targetWaliKelas = null; // Set null jika benar-benar gaib
+      }
+    }
+
+    // Eksekusi update tabel kelas menggunakan ID internal yang sudah steril
+    await Kelas.update({ id_wali_kelas: targetWaliKelas }, { where: { id: id_kelas }, transaction: t });
+    
+    // Bersihkan penugasan lama
     await PenugasanGuru.destroy({ where: { id_kelas }, transaction: t });
     
+    // Proses input penugasan mengajar massal (bulk)
     if (penugasan_mapel && penugasan_mapel.length > 0) {
       const dataToInsert = penugasan_mapel.map(p => {
-        const guruId = p.id_guru || p.guru_id || p.idGuru;
+        const guruIdRaw = p.id_guru || p.guru_id || p.idGuru;
         const mapelId = p.id_mapel || p.mapel_id || p.idMapel;
-        return { id_kelas: id_kelas, id_guru: guruId, id_mapel: mapelId };
+        return { id_kelas: id_kelas, id_guru_raw: guruIdRaw, id_mapel: mapelId };
       });
-      const dataValid = dataToInsert.filter(d => d.id_guru && d.id_mapel);
-      if (dataValid.length > 0) { await PenugasanGuru.bulkCreate(dataValid, { transaction: t }); }
+
+      // Konversi massal untuk ID guru di dalam array penugasan mapel
+      const dataValid = [];
+      for (const item of dataToInsert) {
+        if (item.id_guru_raw && item.id_mapel) {
+          const guruProfil = await Guru.findOne({ where: { [Op.or]: [{ userId: item.id_guru_raw }, { id: item.id_guru_raw }] }, transaction: t });
+          if (guruProfil) {
+            dataValid.push({
+              id_kelas: item.id_kelas,
+              id_guru: guruProfil.id, // Gunakan ID internal profil guru yang valid
+              id_mapel: item.id_mapel
+            });
+          }
+        }
+      }
+
+      if (dataValid.length > 0) { 
+        await PenugasanGuru.bulkCreate(dataValid, { transaction: t }); 
+      }
     }
-    await t.commit(); res.json({ message: "Penugasan kelas berhasil diperbarui!" });
+
+    await t.commit(); 
+    res.json({ message: "Penugasan kelas berhasil diperbarui!" });
   } catch (error) { 
     await t.rollback(); 
     console.error("❌ GAGAL MENYIMPAN PENUGASAN KELAS:", error);
