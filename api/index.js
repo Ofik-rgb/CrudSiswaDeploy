@@ -97,10 +97,16 @@ const loginLimiter = rateLimit({
 // 5. API ENDPOINTS & ROUTING
 // ==========================================
 
-app.use('/api/login', loginLimiter);
+// ==========================================
+// 5. API ENDPOINTS & ROUTING
+// ==========================================
+
+// 📄 PERBAIKAN 1: Sesuaikan jalur rate-limiter
+app.use('/api/auth/login', loginLimiter);
 
 // API AUTENTIKASI (LOGIN)
-app.post('/api/login', async (req, res) => {
+// 📄 PERBAIKAN 2: Ubah rute menjadi '/api/auth/login' agar pas dengan Frontend
+app.post('/api/auth/login', async (req, res) => {
   try {
     const { identifier, password } = req.body;
 
