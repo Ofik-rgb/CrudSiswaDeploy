@@ -9,8 +9,8 @@ const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 // Import Konfigurasi Database & Seluruh Model Profil
-const sequelize = require('./config/database');
-const { User, Admin, Guru, Siswa, Kepsek, Kelas, MataPelajaran, PenugasanGuru, Nilai } = require('./models');
+const sequelize = require('./_config/database');
+const { User, Admin, Guru, Siswa, Kepsek, Kelas, MataPelajaran, PenugasanGuru, Nilai } = require('./_models');
 
 const app = express(); 
 // ==========================================
@@ -204,7 +204,7 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
 
     // 2. LOGIKA DETEKSI PINTAR BERDASARKAN ROLE (Saringan Lengkap termasuk Kepsek):
     if (!currentUser) {
-      const { Admin, Siswa, Guru, Kepsek } = require('./models'); 
+      const { Admin, Siswa, Guru, Kepsek } = require('./_models'); 
 
       if (userRole === 'admin') {
         const dataAdmin = await Admin.findByPk(userId, { transaction: t });
@@ -259,7 +259,7 @@ app.put('/api/users/profile/:id', verifyToken, async (req, res) => {
     }
 
     // 5. Update data detail profil berdasarkan Role dari token
-    const { Admin, Siswa, Guru, Kepsek } = require('./models');
+    const { Admin, Siswa, Guru, Kepsek } = require('./_models');
 
     if (userRole === 'admin') {
       let profilAdmin = await Admin.findOne({ where: { userId: userId }, transaction: t });
@@ -1031,7 +1031,7 @@ app.post('/api/seeding-siswa', async (req, res) => {
 
 
 // Panggil router seeder (Pastikan file routes/seeder.js ada)
-const seederRouter = require('./routes/seeder');
+const seederRouter = require('./_routes/seeder');
 app.use(seederRouter); 
 
 const PORT = 5000;

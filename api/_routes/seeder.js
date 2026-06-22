@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
-const { User, Siswa, Guru, Nilai, Kelas, MataPelajaran, PenugasanGuru } = require('../models');
+const { User, Siswa, Guru, Nilai, Kelas, MataPelajaran, PenugasanGuru } = require('../_models');
 
 router.post('/api/seeder/generate-dummy', async (req, res) => {
     try {

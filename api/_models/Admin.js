@@ -1,6 +1,6 @@
 // models/Admin.js
 const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
+const sequelize = require('../_config/database');
 
 const Admin = sequelize.define('Admin', {
   id: { 

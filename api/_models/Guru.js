@@ -1,6 +1,6 @@
 // models/Guru.js
 const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
+const sequelize = require('../_config/database');
 
 const Guru = sequelize.define('Guru', {
   id: { 
