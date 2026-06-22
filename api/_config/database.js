@@ -1,36 +1,19 @@
-require('dotenv').config(); 
+// 1. Paksa Vercel Bundler untuk melihat dan mengemas modul mysql2
+const mysql2 = require('mysql2'); 
 const { Sequelize } = require('sequelize');
 
-const dbName = process.env.DB_NAME || 'siakad_sekolah_orm';
-const dbUser = process.env.DB_USER || 'root';
-const dbPassword = process.env.DB_PASSWORD || ''; 
-const dbHost = process.env.DB_HOST || 'localhost';
-
-const sequelize = new Sequelize(dbName, dbUser, dbPassword, {
-    host: dbHost,
+const sequelize = new Sequelize(
+  process.env.DB_NAME,     
+  process.env.DB_USER,     
+  process.env.DB_PASSWORD, 
+  {
+    host: process.env.DB_HOST, 
     dialect: 'mysql',
     logging: false,
-    pool: {
-        max: 5,         
-        min: 0,
-        acquire: 30000, 
-        idle: 10000
-    },
-    // 🎯 CONFIG PRODUCTION SAFETY:
-    // Otomatis mengaktifkan enkripsi SSL jika aplikasi mendeteksi host selain localhost (Server Cloud).
-    // Ini menjaga kuota koneksi Clever Cloud tetap aman dan terenkripsi tanpa merusak jalannya localhost.
-    dialectOptions: dbHost !== 'localhost' ? {
-        ssl: {
-            rejectUnauthorized: false
-        }
-    } : {}
-});
-
-// Penundaan autentikasi 7 detik untuk memastikan server database MySQL Anda sudah siap sepenuhnya sebelum diakses
-setTimeout(() => {
-    sequelize.authenticate()
-        .then(() => console.log(`✅ Koneksi Sequelize ke host ${dbHost} berhasil.`))
-        .catch(err => console.error('❌ Tidak dapat terkoneksi ke database:', err));
-}, 7000); 
+    // 2. KRUSIAL: Berikan modul mysql2 secara langsung ke Sequelize
+    // Ini memotong jalur dynamic require bawaan Sequelize yang eror di Vercel
+    dialectModule: mysql2 
+  }
+);
 
 module.exports = sequelize;
