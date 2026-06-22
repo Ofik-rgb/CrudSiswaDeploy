@@ -1,19 +1,15 @@
 // ==========================================
-// 1. IMPORT LIBRARIES & DEPENDENCIES (ES MODULE)
+// 1. IMPORT LIBRARIES & DEPENDENCIES (COMMONJS)
 // ==========================================
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import jwt from 'jsonwebtoken';
-import rateLimit from 'express-rate-limit';
-import { body, validationResult } from 'express-validator';
-import { Op } from 'sequelize';
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
+const { body, validationResult } = require('express-validator');
+const { Op } = require('sequelize');
 
-// 💡 JEMBATAN SIHIR: Izinkan ES Module menggunakan require() khusus untuk file lokal
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-
-// Ambil konfigurasi lokal menggunakan require asli backend Anda (Bebas dari SyntaxError)
+// Import Konfigurasi Database & Seluruh Model Profil
 const sequelize = require('./_config/database.js');
 const models = require('./_models/index.js');
 const { User, Admin, Guru, Siswa, Kepsek, Kelas, MataPelajaran, PenugasanGuru, Nilai } = models;
@@ -304,7 +300,7 @@ app.get('/api/users', verifyToken, async (req, res) => {
       if (userData.role === 'admin') profilRaw = userData.Admin || {};
       if (userData.role === 'guru') profilRaw = userData.Guru || {};
       if (userData.role === 'kepsek') profilRaw = userData.Kepsek || {};
-      if (userData.role === 'siswa') profilRaw = userData.Siswa || {};
+      if (userData.role === 'siswa' && userData.Siswa) profilRaw = userData.Siswa || {};
 
       const profilBersih = { ...profilRaw };
       const idProfilAsli = profilBersih.id;
@@ -740,8 +736,7 @@ app.post('/api/seeding-siswa', async (req, res) => {
   }
 });
 
-// ROUTER SEEDER ACTIVATION (Menggunakan require hasil jembatan createRequire)
 app.use(seederRouter);
 
-// EXPORT UNTUK VERCEL SERVERLESS
-export default app;
+// EXPORT UNTUK VERCEL SERVERLESS VIA COMMONJS
+module.exports = app;
