@@ -19,15 +19,20 @@ const Login = () => {
     setError(''); 
 
     try {
-      const response = await axios.post('http://localhost:5000/api/login', {
-        identifier,
+      // 📄 PERBAIKAN: Gunakan jalur relatif '/api/auth/login'
+      // dan kirim properti 'username' sesuai kebutuhan backend Anda
+      const response = await axios.post('/api/auth/login', {
+        username: identifier, // 'identifier' di-mapping ke 'username' agar dibaca oleh backend
         password
       });
 
       localStorage.setItem('token', response.data.token);
-      setAuthUser(response.data.user);
       
-     
+      // 📄 PERBAIKAN: Sesuaikan dengan struktur return object dari backend
+      setAuthUser({
+        username: response.data.username,
+        role: response.data.role
+      });
       
     } catch (err) {
       setError(err.response?.data?.message || 'Terjadi kesalahan tidak terduga pada server.');
