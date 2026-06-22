@@ -28,32 +28,43 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 const SECRET_KEY = "kunci_rahasia_siakad_super_aman";
 
 // ==========================================
-// 3. SINKRONISASI DATABASE & AUTO-SEEDING
+// 3. SINKRONISASI DATABASE & AUTO-SEEDING (VERSI SERVERLESS)
 // ==========================================
-setTimeout(() => {
-  sequelize.sync({ alter: true })
-    .then(async () => {
-      console.log(' Database tersinkronisasi sempurna dengan Sequelize ORM.');
-      const adminExist = await User.findOne({ where: { username: 'admin' } });
+let isDbConnected = false;
 
-      if (!adminExist) {
-        const newAdmin = await User.create({
-          username: 'admin',
-          password: 'password123',
-          role: 'admin'
-        });
+async function connectAndSeed() {
+  if (isDbConnected) return;
+  try {
+    await sequelize.authenticate();
+    await sequelize.sync({ alter: true });
+    console.log('Database tersinkronisasi sempurna dengan Sequelize ORM.');
+    
+    const adminExist = await User.findOne({ where: { username: 'admin' } });
+    if (!adminExist) {
+      const newAdmin = await User.create({
+        username: 'admin',
+        password: 'password123',
+        role: 'admin'
+      });
+      await Admin.create({
+        userId: newAdmin.id,
+        name: 'Super Admin'
+      });
+      console.log('AUTO-SEED: Akun Admin berhasil dibuat.');
+    }
+    isDbConnected = true;
+  } catch (err) {
+    console.error('Gagal koneksi/sinkronisasi database:', err);
+  }
+}
 
-        await Admin.create({
-          userId: newAdmin.id,
-          name: 'Super Admin'
-        });
+// Jalankan pencatatan koneksi setiap kali ada request masuk
+app.use(async (req, res, next) => {
+  await connectAndSeed();
+  next();
+});
 
-        console.log(' AUTO-SEED: Akun Admin berhasil dibuat.');
-        console.log(' Login: admin | Pass: password123');
-      }
-    })
-    .catch(err => console.error(' Gagal sinkronisasi database:', err));
-}, 3000);
+// PENTING: Jangan lupa di baris paling bawah sendiri file index.js Anda, tambahkan ini:
 
 // ==========================================
 // 4. SECURITY MIDDLEWARE (RATE LIMIT & JWT)
