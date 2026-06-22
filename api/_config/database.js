@@ -1,4 +1,3 @@
-// 1. Paksa Vercel Bundler untuk melihat dan mengemas modul mysql2
 const mysql2 = require('mysql2'); 
 const { Sequelize } = require('sequelize');
 
@@ -10,9 +9,15 @@ const sequelize = new Sequelize(
     host: process.env.DB_HOST, 
     dialect: 'mysql',
     logging: false,
-    // 2. KRUSIAL: Berikan modul mysql2 secara langsung ke Sequelize
-    // Ini memotong jalur dynamic require bawaan Sequelize yang eror di Vercel
-    dialectModule: mysql2 
+    dialectModule: mysql2, // Paksa vercel membungkus mysql2
+    
+    // 💡 SOLUSI UTAMA: Batasi pool koneksi khusus untuk serverless
+    pool: {
+      max: 1,         // Maksimal 1 koneksi saja per instansi lambda Vercel
+      min: 0,         // Jika tidak ada request, turunkan jadi 0 koneksi
+      idle: 5000,     // Putus koneksi otomatis jika menganggur selama 5 detik
+      acquire: 30000  // Waktu toleransi maksimal untuk jabat tangan ke database
+    }
   }
 );
 
